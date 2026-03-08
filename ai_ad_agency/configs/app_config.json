@@ -21,7 +21,7 @@
       "requests_per_minute": 60
     },
     "avatar": {
-      "provider": "heygen",
+      "provider": "mock",
       "requests_per_minute": 10,
       "poll_interval_sec": 10,
       "max_poll_attempts": 60,
@@ -40,7 +40,7 @@
       "max_poll_attempts": 40
     },
     "voice": {
-      "provider": "elevenlabs",
+      "provider": "mock",
       "model_id": "eleven_monolingual_v1",
       "requests_per_minute": 20
     }
@@ -75,7 +75,7 @@
     "script_variants_per_script": 2,
     "images_per_run": 200,
     "broll_clips_per_run": 40,
-    "talking_actor_jobs_per_run": 100,
+    "talking_actor_jobs_per_run": 0,
     "use_rotated_hooks_weight": 0.6,
     "use_broll_weight": 0.7,
     "use_captions_weight": 0.9,
@@ -88,7 +88,7 @@
     "min_video_duration_sec": 5.0,
     "max_video_duration_sec": 120.0,
     "min_file_size_bytes": 50000,
-    "required_audio": true,
+    "required_audio": false,
     "check_dimensions": true,
     "reject_duplicate_hashes": true,
     "reject_near_duplicate_metadata": true,

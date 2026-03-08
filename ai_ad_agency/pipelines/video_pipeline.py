@@ -160,7 +160,7 @@ class VideoPipeline:
             else:
                 logger.warning("Hook card failed for variant %s", variant.creative_id[:8])
 
-        # ---- 2. Talking actor ----
+        # ---- 2. Talking actor (optional) ----
         if talking_actor_path and Path(talking_actor_path).exists():
             actor_scaled = str(Path(tmp_dir) / "seg_02_actor.mp4")
             dims = get_dimensions(talking_actor_path)
@@ -173,19 +173,7 @@ class VideoPipeline:
             else:
                 segments.append(talking_actor_path)
         else:
-            logger.debug("No talking actor for variant %s", variant.creative_id[:8])
-            # Create placeholder silent segment
-            placeholder = str(Path(tmp_dir) / "seg_02_placeholder.mp4")
-            create_text_card(
-                text="[No actor clip]",
-                output_path=placeholder,
-                width=width,
-                height=height,
-                duration_sec=5.0,
-                bg_color="#1a1a2e",
-            )
-            if Path(placeholder).exists():
-                segments.append(placeholder)
+            logger.debug("No talking actor for variant %s — skipping segment", variant.creative_id[:8])
 
         # ---- 3. B-roll inserts ----
         for i, broll_path in enumerate(broll_paths[:2]):  # Max 2 b-roll clips
