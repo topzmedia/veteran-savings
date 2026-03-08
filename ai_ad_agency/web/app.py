@@ -239,12 +239,9 @@ async def job_status(job_id: str):
 
 @app.get("/api/job/{job_id}/files")
 async def list_outputs(job_id: str):
-    with _jobs_lock:
-        job = _jobs.get(job_id)
-    if not job or not job.get("output_dir"):
+    out_dir = OUTPUTS_DIR / job_id
+    if not out_dir.exists():
         return JSONResponse({"files": []})
-
-    out_dir = Path(job["output_dir"])
     files = []
     for f in sorted(out_dir.rglob("*")):
         if f.is_file() and not f.name.endswith((".pyc", ".pyo")):
@@ -262,12 +259,9 @@ async def list_outputs(job_id: str):
 @app.get("/api/job/{job_id}/content")
 async def job_content(job_id: str):
     """Return hook and script text for inline display."""
-    with _jobs_lock:
-        job = _jobs.get(job_id)
-    if not job or not job.get("output_dir"):
+    out_dir = OUTPUTS_DIR / job_id
+    if not out_dir.exists():
         return JSONResponse({"hooks": [], "scripts": []})
-
-    out_dir = Path(job["output_dir"])
     hooks = []
     scripts = []
 
