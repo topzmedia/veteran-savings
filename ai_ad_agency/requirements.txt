@@ -7,6 +7,12 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 python-dotenv>=1.0.0
 
+# ---- Web ----
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+jinja2>=3.1.0
+python-multipart>=0.0.9
+
 # ---- CLI ----
 typer[all]>=0.9.0
 
