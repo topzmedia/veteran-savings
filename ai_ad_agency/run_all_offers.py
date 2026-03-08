@@ -7,9 +7,11 @@ Usage (from the ai_ad_agency directory):
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -43,13 +45,47 @@ def check_api_key() -> None:
         sys.exit(1)
 
 
+def offer_slug(config_path: str) -> str:
+    return Path(config_path).stem.replace("offer_", "")
+
+
 def run_offer(config_path: str, count: int) -> bool:
-    offer_name = Path(config_path).stem.replace("offer_", "").replace("_", " ").title()
+    slug = offer_slug(config_path)
+    offer_name = slug.replace("_", " ").title()
     print(f"\n{'='*60}\n  Running: {offer_name}\n{'='*60}")
-    result = subprocess.run(
-        [sys.executable, "main.py", "autopilot", "--config", config_path, "--count", str(count)],
-    )
-    ok = result.returncode == 0
+
+    # Build a per-offer app config with isolated output/db directories
+    app_cfg = {
+        "base_output_dir": f"outputs/{slug}",
+        "base_data_dir": f"data/{slug}",
+        "base_log_dir": f"data/{slug}/logs",
+        "cache_dir": f"data/{slug}/cache",
+        "db_path": f"data/{slug}/runs.db",
+    }
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", prefix=f"appcfg_{slug}_", delete=False
+    ) as tmp:
+        json.dump(app_cfg, tmp)
+        tmp_path = tmp.name
+
+    try:
+        result = subprocess.run(
+            [
+                sys.executable, "main.py", "autopilot",
+                "--config", config_path,
+                "--count", str(count),
+                "--app-config", tmp_path,
+                "--force",
+            ],
+        )
+        ok = result.returncode == 0
+    finally:
+        try:
+            Path(tmp_path).unlink()
+        except Exception:
+            pass
+
     print(f"\n[{'DONE' if ok else 'FAILED'}] {offer_name}")
     return ok
 
@@ -72,7 +108,7 @@ def main() -> None:
     if failed:
         for f in failed:
             print(f"  FAILED: {f}")
-    print(f"Outputs in: outputs/")
+    print("Outputs in: outputs/<offer>/")
 
 
 if __name__ == "__main__":

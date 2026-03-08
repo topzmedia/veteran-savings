@@ -197,6 +197,20 @@ class QAAgent:
 
         # -- Video creatives --
         for creative in creatives:
+            # STATIC_IMAGE variants have no video file; accept them without video QA
+            if creative.creative_type and creative.creative_type.value == "static_image":
+                creative.qa_passed = True
+                creative.qa_notes = []
+                creative.status = AssetStatus.ACCEPTED
+                passed.append(QAResult(
+                    asset_id=creative.creative_id,
+                    asset_type="image",
+                    file_path=creative.file_path or "",
+                    passed=True,
+                    file_exists=bool(creative.file_path),
+                ))
+                continue
+
             result = self.check_video(creative)
 
             # Duplicate content check

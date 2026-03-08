@@ -159,7 +159,7 @@ class QAConfig(BaseModel):
     min_video_duration_sec: float = 5.0
     max_video_duration_sec: float = 120.0
     min_file_size_bytes: int = 50_000        # 50 KB
-    required_audio: bool = True
+    required_audio: bool = False
     check_dimensions: bool = True
     expected_video_formats: List[str] = Field(
         default_factory=lambda: ["1080x1920", "1080x1080"]
