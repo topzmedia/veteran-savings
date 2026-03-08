@@ -141,6 +141,48 @@ def _fetch_hooks_for_category(
 # Main agent function
 # ---------------------------------------------------------------------------
 
+_FAST_PATH_THRESHOLD = 50  # use single API call when requesting ≤ this many hooks
+
+
+def _fetch_hooks_single_call(
+    llm: BaseLLMProvider,
+    offer: OfferConfig,
+    count: int,
+    categories: list,
+) -> List[str]:
+    """Single API call that requests all hooks at once across all categories."""
+    cat_list = ", ".join(c.value for c in categories)
+    system_prompt = HOOK_SYSTEM_PROMPT.format(
+        max_chars=_MAX_HOOK_CHARS,
+        max_words=_MAX_HOOK_WORDS,
+    )
+    user_prompt = (
+        f"Generate exactly {count} unique hooks for the following offer.\n\n"
+        f"OFFER: {offer.offer_name}\n"
+        f"DESCRIPTION: {offer.offer_description}\n"
+        f"TARGET AUDIENCE: {offer.target_audience}\n"
+        f"PAIN POINTS: {', '.join(offer.pain_points)}\n"
+        f"BENEFITS: {', '.join(offer.benefits)}\n"
+        f"TONE: {', '.join(offer.tone) if offer.tone else 'professional, empathetic'}\n\n"
+        f"Mix across these styles: {cat_list}\n\n"
+        "Rules:\n"
+        f"- Each hook must be under {_MAX_HOOK_CHARS} characters\n"
+        "- Each hook must be fresh, specific, and punchy\n"
+        "- Do NOT repeat the same concept\n"
+        "- Vary sentence structure — mix questions, statements, partial sentences\n\n"
+        "Return ONLY a JSON array of strings. No explanation. No numbering.\n"
+        'Example: ["Hook one here", "Hook two here", ...]'
+    )
+    raw = llm.complete_json(system_prompt, user_prompt, temperature=0.95, max_tokens=4096)
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if item and str(item).strip()]
+    if isinstance(raw, dict):
+        for key in ("hooks", "results", "data"):
+            if isinstance(raw.get(key), list):
+                return [str(item).strip() for item in raw[key] if item]
+    raise TransientError(f"Unexpected LLM response shape: {type(raw)}")
+
+
 def run_hook_agent(
     llm: BaseLLMProvider,
     offer: OfferConfig,
@@ -151,19 +193,53 @@ def run_hook_agent(
     """
     Generate `total_hooks` hooks across all categories.
 
-    Steps:
-      1. Divide requested count evenly across active categories.
-      2. Call LLM per category (with retries).
-      3. Deduplicate across all hooks.
-      4. Score each hook.
-      5. Save JSON + CSV.
-      6. Return List[Hook].
+    For small counts (≤ _FAST_PATH_THRESHOLD) uses a single API call.
+    For large counts divides across categories with one call each.
     """
     out_dir = Path(output_dir) if output_dir else _OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
 
     categories = offer.hook_categories or list(HookCategory)
     n_cats = len(categories)
+
+    # ── Fast path: single API call ──────────────────────────────────────────
+    if total_hooks <= _FAST_PATH_THRESHOLD:
+        logger.info("HookAgent fast-path: requesting %d hooks in one call", total_hooks)
+        dedupe = TextDedupe(similarity_threshold=dedupe_threshold)
+        all_hooks: List[Hook] = []
+        try:
+            raw_texts = with_retries(
+                _fetch_hooks_single_call,
+                llm, offer, total_hooks, categories,
+                max_attempts=3, base_delay=1.0, max_delay=10.0, reraise=True,
+            )
+            for text in raw_texts:
+                text = text.strip()
+                if not text:
+                    continue
+                if len(text) > _MAX_HOOK_CHARS:
+                    text = text[:_MAX_HOOK_CHARS].rsplit(" ", 1)[0]
+                if not dedupe.add(text):
+                    continue
+                score = _score_hook(text)
+                # assign category based on position round-robin
+                cat = categories[len(all_hooks) % n_cats]
+                all_hooks.append(Hook(
+                    text=text, category=cat,
+                    strength_score=score, offer_name=offer.offer_name,
+                ))
+        except Exception as exc:
+            logger.error("Fast-path hook generation failed: %s", exc)
+
+        all_hooks.sort(key=lambda h: h.strength_score, reverse=True)
+        json_path = out_dir / "hooks.json"
+        csv_path = out_dir / "hooks.csv"
+        write_models_json(all_hooks, json_path)
+        models_to_csv(all_hooks, csv_path)
+        logger.info("Saved %d hooks → %s", len(all_hooks), out_dir)
+        return all_hooks
+
+    # ── Slow path: one call per category (for large counts) ─────────────────
     per_cat = math.ceil(total_hooks / n_cats)
 
     # Request ~20% more to allow for deduplication losses
