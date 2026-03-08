@@ -70,11 +70,14 @@ class VideoPipeline:
         width: int = 1080,
         height: int = 1920,
         tmp_dir: Optional[str] = None,
+        hook_video_path: Optional[str] = None,
     ) -> bool:
         """
         Assemble one final video. Returns True on success.
 
         All intermediate files are created in a temporary directory and cleaned up.
+        If hook_video_path is provided it is used as the opening hook segment;
+        otherwise a text card is generated from hook_text.
         """
         if not self._ffmpeg_ok:
             logger.warning("FFmpeg unavailable — skipping assembly for %s", output_path)
@@ -101,6 +104,7 @@ class VideoPipeline:
                 width=width,
                 height=height,
                 tmp_dir=tmp_dir,
+                hook_video_path=hook_video_path,
             )
         finally:
             if use_tmp and tmp:
@@ -122,26 +126,39 @@ class VideoPipeline:
         width: int,
         height: int,
         tmp_dir: str,
+        hook_video_path: Optional[str] = None,
     ) -> bool:
         segments: List[str] = []
 
-        # ---- 1. Hook card ----
-        hook_card = str(Path(tmp_dir) / "seg_01_hook_card.mp4")
-        hook_duration = self.config.render.hook_card_duration_sec
-        ok = create_text_card(
-            text=hook_text,
-            output_path=hook_card,
-            width=width,
-            height=height,
-            duration_sec=hook_duration,
-            bg_color="#000000",
-            font_color="white",
-            font_size=min(60, 1080 * 60 // width),
-        )
-        if ok:
-            segments.append(hook_card)
+        # ---- 1. Hook segment ----
+        if hook_video_path and Path(hook_video_path).exists():
+            # Use downloaded video hook clip, scaled to output dimensions
+            hook_seg = str(Path(tmp_dir) / "seg_01_hook_video.mp4")
+            dims = get_dimensions(hook_video_path)
+            if dims and dims != (width, height):
+                ok = scale_video(hook_video_path, hook_seg, width, height, pad=True)
+                segments.append(hook_seg if ok else hook_video_path)
+            else:
+                segments.append(hook_video_path)
+            logger.info("Using video hook clip: %s", Path(hook_video_path).name)
         else:
-            logger.warning("Hook card failed for variant %s", variant.creative_id[:8])
+            # Fallback: generate text card
+            hook_card = str(Path(tmp_dir) / "seg_01_hook_card.mp4")
+            hook_duration = self.config.render.hook_card_duration_sec
+            ok = create_text_card(
+                text=hook_text,
+                output_path=hook_card,
+                width=width,
+                height=height,
+                duration_sec=hook_duration,
+                bg_color="#000000",
+                font_color="white",
+                font_size=min(60, 1080 * 60 // width),
+            )
+            if ok:
+                segments.append(hook_card)
+            else:
+                logger.warning("Hook card failed for variant %s", variant.creative_id[:8])
 
         # ---- 2. Talking actor ----
         if talking_actor_path and Path(talking_actor_path).exists():
@@ -276,6 +293,13 @@ class VideoPipeline:
             logger.error("FFmpeg unavailable — cannot assemble videos")
             return variants
 
+        from ..utils.video_hook_selector import VideoHookSelector
+        hook_selector = VideoHookSelector()
+        if hook_selector.count:
+            logger.info("VideoHookSelector: %d clips available for batch", hook_selector.count)
+        else:
+            logger.info("VideoHookSelector: no clips found, will use text cards")
+
         total = len(variants)
         completed = 0
         failed = 0
@@ -296,6 +320,9 @@ class VideoPipeline:
             # Resolve components
             hook_text = variant.hook_text or "Watch this."
 
+            # Pick a video hook clip — rotate through available clips across variants
+            hook_video = hook_selector.pick_by_index(i)
+
             # Get talking actor path
             actor_path = self._resolve_actor_path(variant, component_lookup)
 
@@ -314,10 +341,11 @@ class VideoPipeline:
             caption_file = captions.get(variant.caption_id) if variant.caption_id else None
 
             logger.info(
-                "[VIDEO ASSEMBLY %d/%d] Variant %s",
+                "[VIDEO ASSEMBLY %d/%d] Variant %s | hook_clip=%s",
                 i + 1,
                 total,
                 variant.creative_id[:8],
+                Path(hook_video).name if hook_video else "text_card",
             )
 
             ok = self.assemble_video(
@@ -330,6 +358,7 @@ class VideoPipeline:
                 output_path=out_path,
                 width=variant.width or 1080,
                 height=variant.height or 1920,
+                hook_video_path=hook_video,
             )
 
             if ok and Path(out_path).exists():
