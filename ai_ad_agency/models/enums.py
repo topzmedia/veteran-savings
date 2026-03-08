@@ -21,6 +21,7 @@ class ScriptStyle(str, Enum):
     COMPARISON = "comparison"
     ALMOST_MISSED = "almost_missed"
     NEWS_UPDATE = "news_update"
+    UGC = "ugc"
 
 
 class VideoLength(str, Enum):

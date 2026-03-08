@@ -199,22 +199,22 @@ class AppConfig(BaseModel):
     def inject_env_api_keys(self) -> "AppConfig":
         """Pull API keys from environment if not set in config."""
         env_map = {
-            "OPENAI_API_KEY": ("providers", "llm", "api_key"),
-            "HEYGEN_API_KEY": ("providers", "avatar", "api_key"),
-            "TAVUS_API_KEY": ("providers", "avatar", "api_key"),
-            "STABILITY_API_KEY": ("providers", "image", "api_key"),
-            "RUNWAY_API_KEY": ("providers", "video", "api_key"),
-            "ELEVENLABS_API_KEY": ("providers", "voice", "api_key"),
+            "OPENAI_API_KEY": [("providers", "llm", "api_key"), ("providers", "image", "api_key")],
+            "HEYGEN_API_KEY": [("providers", "avatar", "api_key")],
+            "TAVUS_API_KEY": [("providers", "avatar", "api_key")],
+            "STABILITY_API_KEY": [("providers", "image", "api_key")],
+            "RUNWAY_API_KEY": [("providers", "video", "api_key")],
+            "ELEVENLABS_API_KEY": [("providers", "voice", "api_key")],
         }
-        for env_var, path in env_map.items():
+        for env_var, paths in env_map.items():
             val = os.environ.get(env_var, "")
             if not val:
                 continue
-            # Set the appropriate nested field
-            if path[0] == "providers":
-                sub = getattr(self.providers, path[1])
-                if not getattr(sub, path[2]):
-                    setattr(sub, path[2], val)
+            for path in paths:
+                if path[0] == "providers":
+                    sub = getattr(self.providers, path[1])
+                    if not getattr(sub, path[2]):
+                        setattr(sub, path[2], val)
         return self
 
 

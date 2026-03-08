@@ -451,3 +451,26 @@ def run_hook_agent(
     logger.info("Saved %d hooks → %s", len(all_hooks), out_dir)
 
     return all_hooks
+
+
+# ---------------------------------------------------------------------------
+# Class wrapper (for pipeline compatibility)
+# ---------------------------------------------------------------------------
+
+class HookAgent:
+    def __init__(self, config: object, llm_provider: "BaseLLMProvider"):
+        self.config = config
+        self.llm = llm_provider
+
+    def generate(
+        self,
+        offer: "OfferConfig",
+        total_count: int = 200,
+        output_dir: str | Path | None = None,
+    ) -> List[Hook]:
+        return run_hook_agent(
+            llm=self.llm,
+            offer=offer,
+            total_hooks=total_count,
+            output_dir=output_dir,
+        )

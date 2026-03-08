@@ -394,3 +394,24 @@ def run_script_agent(
     logger.info("Saved %d scripts → %s", len(all_scripts), out_dir)
 
     return all_scripts
+
+
+class ScriptAgent:
+    def __init__(self, config: object, llm_provider: BaseLLMProvider):
+        self.config = config
+        self.llm = llm_provider
+
+    def generate(
+        self,
+        offer: OfferConfig,
+        hooks: List[Hook],
+        scripts_per_hook: int = 3,
+        output_dir: str | Path | None = None,
+    ) -> List[Script]:
+        return run_script_agent(
+            llm=self.llm,
+            hooks=hooks,
+            offer=offer,
+            scripts_per_hook=scripts_per_hook,
+            output_dir=output_dir,
+        )

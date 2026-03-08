@@ -204,3 +204,22 @@ def run_rotating_hook_agent(
     logger.info("Saved %d rotated hooks → %s", len(all_rotated), out_dir)
 
     return all_rotated
+
+
+class RotatingHookAgent:
+    def __init__(self, config: object, llm_provider: BaseLLMProvider):
+        self.config = config
+        self.llm = llm_provider
+
+    def generate_variants(
+        self,
+        hooks: List[Hook],
+        variants_per_hook: int = 4,
+        output_dir: str | Path | None = None,
+    ) -> List[RotatedHook]:
+        return run_rotating_hook_agent(
+            llm=self.llm,
+            hooks=hooks,
+            variants_per_hook=variants_per_hook,
+            output_dir=output_dir,
+        )

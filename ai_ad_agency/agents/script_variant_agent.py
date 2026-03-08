@@ -311,3 +311,22 @@ def run_script_variant_agent(
     logger.info("Saved %d script variants → %s", len(all_variants), out_dir)
 
     return all_variants
+
+
+class ScriptVariantAgent:
+    def __init__(self, config: object, llm_provider: BaseLLMProvider):
+        self.config = config
+        self.llm = llm_provider
+
+    def generate(
+        self,
+        scripts: List[Script],
+        variants_per_script: int = 2,
+        output_dir: str | Path | None = None,
+    ) -> List[ScriptVariant]:
+        return run_script_variant_agent(
+            llm=self.llm,
+            scripts=scripts,
+            variants_per_script=variants_per_script,
+            output_dir=output_dir,
+        )
