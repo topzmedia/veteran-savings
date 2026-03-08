@@ -3,6 +3,7 @@ Hook Agent — generates ad hooks for all categories, deduplicates, scores, and 
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 from pathlib import Path
@@ -22,6 +23,36 @@ from ..utils.prompt_templates import (
 from ..utils.retries import TransientError, with_retries
 
 logger = get_module_logger("hook_agent")
+
+# ---------------------------------------------------------------------------
+# Pre-scraped hook bank (TransitionalHooks.com)
+# ---------------------------------------------------------------------------
+
+_HOOKS_BANK_PATH = Path("ai_ad_agency/data/inputs/transitional_hooks.json")
+
+
+def _load_hooks_bank() -> List[str]:
+    """Load pre-scraped hooks from the static bank file, if it exists."""
+    if not _HOOKS_BANK_PATH.exists():
+        return []
+    try:
+        data = json.loads(_HOOKS_BANK_PATH.read_text(encoding="utf-8"))
+        texts = []
+        for item in data:
+            if isinstance(item, dict):
+                h = item.get("hook", "") or item.get("text", "")
+            elif isinstance(item, str):
+                h = item
+            else:
+                continue
+            h = h.strip()
+            if h and len(h) > 5:
+                texts.append(h)
+        logger.info("Loaded %d hooks from bank (%s)", len(texts), _HOOKS_BANK_PATH)
+        return texts
+    except Exception as exc:
+        logger.warning("Could not load hooks bank: %s", exc)
+        return []
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -231,6 +262,27 @@ def run_hook_agent(
         except Exception as exc:
             logger.error("Fast-path hook generation failed: %s", exc)
 
+        # Blend in pre-scraped bank hooks
+        bank_texts = _load_hooks_bank()
+        if bank_texts:
+            added_from_bank = 0
+            for text in bank_texts:
+                text = text.strip()
+                if not text or len(text) > _MAX_HOOK_CHARS:
+                    continue
+                if not dedupe.add(text):
+                    continue
+                score = _score_hook(text)
+                cat = categories[len(all_hooks) % n_cats]
+                all_hooks.append(Hook(
+                    text=text,
+                    category=cat,
+                    strength_score=score,
+                    offer_name=offer.offer_name,
+                ))
+                added_from_bank += 1
+            logger.info("Added %d hooks from pre-scraped bank", added_from_bank)
+
         all_hooks.sort(key=lambda h: h.strength_score, reverse=True)
         json_path = out_dir / "hooks.json"
         csv_path = out_dir / "hooks.csv"
@@ -358,6 +410,27 @@ def run_hook_agent(
                         break
         except Exception as exc:
             logger.warning("Top-up pass failed: %s", exc)
+
+    # ── Blend in pre-scraped bank hooks ────────────────────────────────────
+    bank_texts = _load_hooks_bank()
+    if bank_texts:
+        added_from_bank = 0
+        for text in bank_texts:
+            text = text.strip()
+            if not text or len(text) > _MAX_HOOK_CHARS:
+                continue
+            if not dedupe.add(text):
+                continue
+            score = _score_hook(text)
+            cat = categories[len(all_hooks) % n_cats]
+            all_hooks.append(Hook(
+                text=text,
+                category=cat,
+                strength_score=score,
+                offer_name=offer.offer_name,
+            ))
+            added_from_bank += 1
+        logger.info("Added %d hooks from pre-scraped bank", added_from_bank)
 
     # Sort by strength score descending
     all_hooks.sort(key=lambda h: h.strength_score, reverse=True)
