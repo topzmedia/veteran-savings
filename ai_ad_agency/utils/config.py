@@ -239,8 +239,10 @@ def load_app_config(path: str | Path | None = None) -> AppConfig:
     """Load app config from JSON file or environment defaults."""
     if path and Path(path).exists():
         data = load_json(path)
-        return AppConfig(**data)
-    return AppConfig()
+        cfg = AppConfig(**data)
+    else:
+        cfg = AppConfig()
+    return cfg.inject_env_api_keys()
 
 
 def load_provider_config(path: str | Path | None = None) -> ProviderConfig:
