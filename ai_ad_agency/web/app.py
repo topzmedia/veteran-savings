@@ -13,6 +13,23 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+# Load .env file so OPENAI_API_KEY etc. are available as env vars
+try:
+    from dotenv import load_dotenv
+    # Search upward from this file for a .env
+    _env_candidates = [
+        Path(__file__).parent.parent.parent / ".env",  # project root
+        Path(__file__).parent.parent / ".env",          # ai_ad_agency/
+        Path.home() / "aiagency" / ".env",              # ~/aiagency/.env
+        Path.home() / ".env",
+    ]
+    for _p in _env_candidates:
+        if _p.exists():
+            load_dotenv(_p, override=False)
+            break
+except ImportError:
+    pass
+
 from fastapi import BackgroundTasks, FastAPI, Form, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -240,6 +257,45 @@ async def list_outputs(job_id: str):
                 "category": f.parent.name,
             })
     return JSONResponse({"files": files})
+
+
+@app.get("/api/job/{job_id}/content")
+async def job_content(job_id: str):
+    """Return hook and script text for inline display."""
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+    if not job or not job.get("output_dir"):
+        return JSONResponse({"hooks": [], "scripts": []})
+
+    out_dir = Path(job["output_dir"])
+    hooks = []
+    scripts = []
+
+    hooks_dir = out_dir / "hooks"
+    if hooks_dir.exists():
+        for f in sorted(hooks_dir.glob("*.json")):
+            try:
+                data = json.loads(f.read_text())
+                if isinstance(data, list):
+                    for item in data:
+                        text = item.get("text", item.get("hook_text", str(item))) if isinstance(item, dict) else str(item)
+                        hooks.append({"text": text, "file": f.name})
+                elif isinstance(data, dict):
+                    text = data.get("text", data.get("hook_text", str(data)))
+                    hooks.append({"text": text, "file": f.name})
+            except Exception:
+                pass
+
+    scripts_dir = out_dir / "scripts"
+    if scripts_dir.exists():
+        for f in sorted(scripts_dir.glob("*.json")):
+            try:
+                data = json.loads(f.read_text())
+                scripts.append({"data": data, "file": f.name})
+            except Exception:
+                pass
+
+    return JSONResponse({"hooks": hooks, "scripts": scripts})
 
 
 @app.get("/download/{path:path}")

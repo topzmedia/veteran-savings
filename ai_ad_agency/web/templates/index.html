@@ -223,6 +223,106 @@
     }
     .files-toggle:hover { background: #1e293b; }
 
+    /* Inline results */
+    .results-section { margin-top: 14px; }
+    .results-section h3 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+    .hook-item {
+      background: #070710;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .hook-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: #0f0f1a;
+      border-bottom: 1px solid #1e293b;
+    }
+    .hook-num { font-size: 11px; color: #64748b; font-weight: 600; }
+    .copy-btn {
+      background: none;
+      border: 1px solid #374151;
+      border-radius: 5px;
+      color: #7c3aed;
+      font-size: 11px;
+      padding: 3px 8px;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: #2d1b69; }
+    .copy-btn.copied { color: #4ade80; border-color: #4ade80; }
+    .hook-text {
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #e2e8f0;
+      line-height: 1.5;
+      cursor: text;
+      user-select: all;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .script-item {
+      background: #070710;
+      border: 1px solid #2d3748;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+    .script-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: #0f0f1a;
+      border-bottom: 1px solid #1e293b;
+      cursor: pointer;
+    }
+    .script-title { font-size: 12px; color: #94a3b8; font-weight: 600; }
+    .script-body { padding: 10px 12px; display: none; }
+    .script-field { margin-bottom: 10px; }
+    .script-field label { font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 3px; display: block; }
+    .script-field textarea {
+      width: 100%;
+      background: #0f0f1a;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 13px;
+      padding: 8px 10px;
+      resize: vertical;
+      min-height: 60px;
+      font-family: inherit;
+      line-height: 1.4;
+    }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      padding: 5px 12px;
+      background: #0f0f1a;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab-btn.active { background: #2d1b69; border-color: #7c3aed; color: #c4b5fd; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
     /* Progress bar */
     .progress-bar {
       height: 3px;
@@ -444,25 +544,147 @@
   }
 
   async function loadFiles(jobId) {
-    const res = await fetch(`/api/job/${jobId}/files`);
-    const data = await res.json();
+    const [filesRes, contentRes] = await Promise.all([
+      fetch(`/api/job/${jobId}/files`),
+      fetch(`/api/job/${jobId}/content`),
+    ]);
+    const filesData = await filesRes.json();
+    const contentData = await contentRes.json();
     const container = document.getElementById(`files-${jobId}`);
-    if (!container || !data.files || data.files.length === 0) return;
+    if (!container) return;
 
-    const icons = { '.jpg':'🖼️', '.jpeg':'🖼️', '.png':'🖼️', '.mp4':'🎬', '.mp3':'🎵', '.json':'📄', '.csv':'📊', '.txt':'📝' };
+    const hooks = contentData.hooks || [];
+    const scripts = contentData.scripts || [];
+    const files = filesData.files || [];
 
-    let html = `<button class="files-toggle" onclick="toggleFiles('files-list-${jobId}')">📁 View ${data.files.length} output files</button>`;
-    html += `<div id="files-list-${jobId}" style="display:none" class="files-list">`;
-    data.files.forEach(f => {
-      const icon = icons[f.ext] || '📄';
-      html += `<a class="file-item" href="/download/${f.path}" target="_blank">
-        <span class="file-icon">${icon}</span>
-        <span class="file-name">${f.name}</span>
-        <span class="file-size">${f.size_kb} KB</span>
-      </a>`;
-    });
-    html += '</div>';
+    // Build tabs: show Hooks and/or Scripts if we have them, always show Files
+    const hasTabs = hooks.length > 0 || scripts.length > 0;
+    let html = '';
+
+    if (hasTabs) {
+      const firstTab = hooks.length > 0 ? 'hooks' : (scripts.length > 0 ? 'scripts' : 'files');
+      html += `<div class="tabs" style="margin-top:12px">`;
+      if (hooks.length > 0)   html += `<button class="tab-btn ${firstTab==='hooks'?'active':''}" onclick="showTab('${jobId}','hooks',this)">🎣 Hooks (${hooks.length})</button>`;
+      if (scripts.length > 0) html += `<button class="tab-btn ${firstTab==='scripts'?'active':''}" onclick="showTab('${jobId}','scripts',this)">📝 Scripts (${scripts.length})</button>`;
+      if (files.length > 0)   html += `<button class="tab-btn ${firstTab==='files'?'active':''}" onclick="showTab('${jobId}','files',this)">📁 Files (${files.length})</button>`;
+      html += `</div>`;
+
+      // Hooks tab
+      if (hooks.length > 0) {
+        html += `<div id="tab-${jobId}-hooks" class="tab-content ${firstTab==='hooks'?'active':''}">`;
+        html += `<div class="results-section">`;
+        hooks.forEach((h, i) => {
+          const eid = `hook-${jobId}-${i}`;
+          html += `<div class="hook-item">
+            <div class="hook-header">
+              <span class="hook-num">Hook #${i+1}</span>
+              <button class="copy-btn" onclick="copyText('${eid}',this)">Copy</button>
+            </div>
+            <div class="hook-text" id="${eid}">${escHtml(h.text)}</div>
+          </div>`;
+        });
+        html += `</div></div>`;
+      }
+
+      // Scripts tab
+      if (scripts.length > 0) {
+        html += `<div id="tab-${jobId}-scripts" class="tab-content ${firstTab==='scripts'?'active':''}">`;
+        html += `<div class="results-section">`;
+        scripts.forEach((s, i) => {
+          const sid = `script-${jobId}-${i}`;
+          const d = s.data;
+          html += `<div class="script-item">
+            <div class="script-header" onclick="toggleScriptBody('${sid}-body')">
+              <span class="script-title">📝 Script #${i+1} — ${s.file}</span>
+              <span style="color:#64748b;font-size:11px">▼ expand</span>
+            </div>
+            <div class="script-body" id="${sid}-body">`;
+          if (typeof d === 'object' && d !== null && !Array.isArray(d)) {
+            const fields = ['hook','problem','discovery','benefit','cta','body','script','text'];
+            fields.forEach(key => {
+              if (d[key]) {
+                html += `<div class="script-field">
+                  <label>${key}</label>
+                  <textarea rows="3" onclick="this.select()">${escHtml(String(d[key]))}</textarea>
+                </div>`;
+              }
+            });
+            // Any remaining keys
+            Object.keys(d).forEach(key => {
+              if (!fields.includes(key) && d[key] && typeof d[key] === 'string') {
+                html += `<div class="script-field">
+                  <label>${key}</label>
+                  <textarea rows="2" onclick="this.select()">${escHtml(d[key])}</textarea>
+                </div>`;
+              }
+            });
+          } else {
+            html += `<div class="script-field"><textarea rows="4" onclick="this.select()">${escHtml(JSON.stringify(d, null, 2))}</textarea></div>`;
+          }
+          html += `</div></div>`;
+        });
+        html += `</div></div>`;
+      }
+
+      // Files tab
+      if (files.length > 0) {
+        const icons = { '.jpg':'🖼️', '.jpeg':'🖼️', '.png':'🖼️', '.mp4':'🎬', '.mp3':'🎵', '.json':'📄', '.csv':'📊', '.txt':'📝' };
+        html += `<div id="tab-${jobId}-files" class="tab-content ${firstTab==='files'?'active':''}">`;
+        html += `<div class="files-list">`;
+        files.forEach(f => {
+          const icon = icons[f.ext] || '📄';
+          html += `<a class="file-item" href="/download/${f.path}" target="_blank">
+            <span class="file-icon">${icon}</span>
+            <span class="file-name">${f.name}</span>
+            <span class="file-size">${f.size_kb} KB</span>
+          </a>`;
+        });
+        html += `</div></div>`;
+      }
+    } else if (files.length > 0) {
+      // No inline content, just show files list
+      const icons = { '.jpg':'🖼️', '.jpeg':'🖼️', '.png':'🖼️', '.mp4':'🎬', '.mp3':'🎵', '.json':'📄', '.csv':'📊', '.txt':'📝' };
+      html += `<button class="files-toggle" onclick="toggleFiles('files-list-${jobId}')">📁 View ${files.length} output files</button>`;
+      html += `<div id="files-list-${jobId}" style="display:none" class="files-list">`;
+      files.forEach(f => {
+        const icon = icons[f.ext] || '📄';
+        html += `<a class="file-item" href="/download/${f.path}" target="_blank">
+          <span class="file-icon">${icon}</span>
+          <span class="file-name">${f.name}</span>
+          <span class="file-size">${f.size_kb} KB</span>
+        </a>`;
+      });
+      html += `</div>`;
+    }
+
     container.innerHTML = html;
+  }
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function showTab(jobId, tab, btn) {
+    const card = document.getElementById(`job-${jobId}`);
+    card.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    card.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    const el = document.getElementById(`tab-${jobId}-${tab}`);
+    if (el) el.classList.add('active');
+  }
+
+  function toggleScriptBody(id) {
+    const el = document.getElementById(id);
+    el.style.display = el.style.display === 'block' ? 'none' : 'block';
+  }
+
+  function copyText(id, btn) {
+    const el = document.getElementById(id);
+    navigator.clipboard.writeText(el.textContent).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1500);
+    });
   }
 
   function toggleFiles(id) {
